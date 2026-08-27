@@ -1,0 +1,21 @@
+services:
+  - type: cron
+    name: rms-key-alarm
+    runtime: node
+    plan: starter
+    schedule: "0 0 * * *" # 毎日 UTC 0:00 = JST 9:00
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: RMS_SERVICE_SECRET
+        sync: false
+      - key: RMS_LICENSE_KEY
+        sync: false
+      - key: WARNING_DAYS
+        value: "5,1"
+      - key: ALERT_MODE
+        value: exact
+      - key: NOTIFY_ON_ERROR
+        value: "true"
+      - key: SLACK_WEBHOOK_URL
+        sync: false
