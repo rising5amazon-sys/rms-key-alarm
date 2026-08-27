@@ -1,0 +1,25 @@
+name: RMS License Key Alarm
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # 毎日 UTC 0:00 = JST 9:00
+  workflow_dispatch: {} # Actionsタブから手動実行するためのトリガー
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: node src/index.js
+        env:
+          RMS_SERVICE_SECRET: ${{ secrets.RMS_SERVICE_SECRET }}
+          RMS_LICENSE_KEY: ${{ secrets.RMS_LICENSE_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WARNING_DAYS: "5,1"
+          ALERT_MODE: exact
+          NOTIFY_ON_ERROR: "true"
