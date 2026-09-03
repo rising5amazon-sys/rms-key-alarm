@@ -13,13 +13,24 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - run: node src/index.js
         env:
           RMS_SERVICE_SECRET: ${{ secrets.RMS_SERVICE_SECRET }}
-          RMS_LICENSE_KEY: ${{ secrets.RMS_LICENSE_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+          # ライセンスキーは共有DB（Xserver の sync.php）から実行時に取る。
+          # ここにキーを直接置くと、再発行のたびに Secret を手で貼り替える必要があり、
+          # 貼り漏れると生きているキーを「失効」と誤通知する（2026-09-03 に発生）。
+          # SYNC_READ_TOKEN は読み取り専用トークン（rakuten_license_key の照会だけ通る）。
+          SYNC_URL: ${{ secrets.SYNC_URL }}
+          SYNC_READ_TOKEN: ${{ secrets.SYNC_READ_TOKEN }}
+
+          # 共有DBを登録するまでの保険。共有DBが設定されていればこちらは使われない。
+          # 移行が終わったらこの行と Secret を削除する。
+          RMS_LICENSE_KEY: ${{ secrets.RMS_LICENSE_KEY }}
+
           WARNING_DAYS: "5,1"
           ALERT_MODE: exact
           NOTIFY_ON_ERROR: "true"
