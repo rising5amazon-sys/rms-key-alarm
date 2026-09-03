@@ -1,10 +1,16 @@
 import { config } from "./config.js";
+import { resolveLicenseKey } from "./keySource.js";
 import { fetchLicenseExpiry, parseExpiryDate } from "./rmsClient.js";
 import { sendSlackMessage } from "./slackNotifier.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const RENEW_HINT =
-  "RMS → 拡張サービス → RMS WEB SERVICE → ライセンスキー発行 で再発行してください。";
+
+// 通知に載せる「次にやること」。共有DBを使っているなら、再発行したキーを貼る先は
+// 更新画面1箇所だけ（各PCの .env も GitHub Secret も触らなくてよい）。
+const RENEW_HINT = config.useSharedStore
+  ? "RMS → 拡張サービス → RMS WEB SERVICE → ライセンスキー発行 で再発行し、" +
+    `更新画面で貼り替えてください（全PCへ自動で配られます）。\n${config.keyUpdateUrl}`
+  : "RMS → 拡張サービス → RMS WEB SERVICE → ライセンスキー発行 で再発行してください。";
 
 function daysRemaining(expiresAt, now = new Date()) {
   return Math.ceil((expiresAt.getTime() - now.getTime()) / MS_PER_DAY);
@@ -26,9 +32,27 @@ async function notifyIfPossible(text) {
 }
 
 async function main() {
+  // まず「どのキーを見るのか」を決める。ここで失敗したら期限の判定はしない。
+  // 古いキーで代わりに判定すると、共有DBの不通を「失効」と誤通知してしまう。
+  let licenseKey;
+  try {
+    const resolved = await resolveLicenseKey();
+    licenseKey = resolved.key;
+    console.log(`ライセンスキーの取得元: ${resolved.source}`);
+  } catch (err) {
+    console.error(err);
+    if (config.notifyOnError) {
+      await notifyIfPossible(
+        `:warning: RMSライセンスキーを取得できませんでした（期限の判定は行っていません）\n\`\`\`${err.message}\`\`\``
+      );
+    }
+    process.exitCode = 1;
+    return;
+  }
+
   let result;
   try {
-    result = await fetchLicenseExpiry();
+    result = await fetchLicenseExpiry(licenseKey);
   } catch (err) {
     console.error(err);
     if (config.notifyOnError) {

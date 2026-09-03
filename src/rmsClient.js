@@ -6,13 +6,16 @@ import { config } from "./config.js";
 //   - licenseKey はクエリ必須（無いと 400 DR0005 Bad Request）
 //   - GETのみ（POSTは405）
 //   - 200 → {"expiryDate": "2026-09-01T23:59:59"} / 401 → 失効・認証情報不正
-export async function fetchLicenseExpiry() {
+//
+// licenseKey は引数で受け取る（共有DBから取ってくることがあるため、configから
+// 直接読まない）。取得元の決定は keySource.js の責任。
+export async function fetchLicenseExpiry(licenseKey) {
   const token = Buffer.from(
-    `${config.rmsServiceSecret}:${config.rmsLicenseKey}`
+    `${config.rmsServiceSecret}:${licenseKey}`
   ).toString("base64");
 
   const url = new URL(config.rmsExpiryUrl);
-  url.searchParams.set("licenseKey", config.rmsLicenseKey);
+  url.searchParams.set("licenseKey", licenseKey);
 
   const res = await fetch(url, {
     method: "GET",
