@@ -1,3 +1,9 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// 基準はこのファイルの位置から解決する（PC固有の絶対パスを持たない）
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 function required(name) {
   const value = process.env[name];
   if (!value) {
@@ -76,13 +82,27 @@ export const config = {
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n)),
 
-  // exact: 残り日数がWARNING_DAYSのいずれかと一致した日だけ通知（デフォルト）
+  // catchup（デフォルト）: 閾値ごとに1回だけ通知する。実行できなかった日があっても
+  //   翌日の実行が「残り4日（5日前の通知が未送）」として拾い直す。1日に何回実行しても
+  //   同じ閾値は二度送らない（送った閾値を stateFile に記録する）
+  // exact: 残り日数がWARNING_DAYSのいずれかと一致した日だけ通知（記録を使わない従来動作。
+  //   その日に実行できないと、その閾値の通知は永久に失われる）
   // at_or_below: 残り日数がWARNING_DAYSのいずれか以下になった日は毎回通知
-  alertMode: optional("ALERT_MODE", "exact"),
+  alertMode: optional("ALERT_MODE", "catchup"),
+
+  // 「どの閾値まで通知したか」の記録先。キーの値は書かない（期限日と日数だけ）。
+  // GitHub Actions では actions/cache で実行をまたいで持ち回る。
+  stateFile: optional("STATE_FILE", path.join(projectRoot, "state", "notified.json")),
 
   // Slack
   slackWebhookUrl: required("SLACK_WEBHOOK_URL"),
 
-  // 通信エラー・想定外レスポンス時にもSlack通知するか
-  notifyOnError: optional("NOTIFY_ON_ERROR", "true") === "true",
+  // 通信エラー・想定外レスポンス時にもSlack通知するか。
+  //
+  // 既定でOFFにしてある。理由: ここで鳴る失敗はほぼ全部「時間をおけば直るもの」
+  // （2026-09-17 の通信エラーがそうだった）で、人が読んでも打つ手がない通知になる。
+  // 再試行と縮退で自力で直す作りにしたうえで、直らなかった事実は
+  // GitHub Actions の失敗（赤いバッジ＋GitHubからのメール）に残す。
+  // 技術的な失敗もSlackで見たい場合だけ true にする。
+  notifyOnError: optional("NOTIFY_ON_ERROR", "false") === "true",
 };
