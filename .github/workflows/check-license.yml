@@ -2,8 +2,17 @@ name: RMS License Key Alarm
 
 on:
   schedule:
-    - cron: "0 0 * * *" # 毎日 UTC 0:00 = JST 9:00
+    # 1日3回。通信が落ちた回があっても、後の回が自力で拾い直すため。
+    # 通知は閾値ごとに1回だけ（state/notified.json に記録）なので重複しない。
+    - cron: "0 0 * * *" # UTC 0:00 = JST 9:00
+    - cron: "0 3 * * *" # UTC 3:00 = JST 12:00
+    - cron: "0 7 * * *" # UTC 7:00 = JST 16:00
   workflow_dispatch: {} # Actionsタブから手動実行するためのトリガー
+
+# 3回の実行が重ならないようにする（同時に走ると同じ通知を2回出しうる）
+concurrency:
+  group: rms-key-alarm
+  cancel-in-progress: false
 
 jobs:
   check:
@@ -14,6 +23,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      # 「どの閾値まで通知したか」を実行をまたいで持ち回る。
+      # これが無いと、1日3回の実行が同じ通知を3回出してしまう。
+      # 中身は期限日と日数だけで、ライセンスキーは入らない（notifyState.js を参照）。
+      # キャッシュが消えても壊れない（最悪、通知が1回重複するだけ）。
+      - name: 通知済みの記録を復元
+        uses: actions/cache@v4
+        with:
+          path: state
+          key: rms-key-alarm-state-${{ github.run_id }}
+          restore-keys: rms-key-alarm-state-
 
       - run: node src/index.js
         env:
@@ -27,10 +47,13 @@ jobs:
           SYNC_URL: ${{ secrets.SYNC_URL }}
           SYNC_READ_TOKEN: ${{ secrets.SYNC_READ_TOKEN }}
 
-          # 共有DBを登録するまでの保険。共有DBが設定されていればこちらは使われない。
-          # 移行が終わったらこの行と Secret を削除する。
+          # 共有DBが不通のときの縮退運転用（このキーでの401は失効と断定しない）。
+          # 消してもよいが、残しておくと共有DBが落ちた日も期限の見張りが続く。
           RMS_LICENSE_KEY: ${{ secrets.RMS_LICENSE_KEY }}
 
           WARNING_DAYS: "5,1"
-          ALERT_MODE: exact
-          NOTIFY_ON_ERROR: "true"
+          # catchup: 閾値ごとに1回だけ通知し、実行できなかった日ぶんは後の実行が拾う
+          ALERT_MODE: catchup
+          # 通信エラー等はSlackへ出さない（再試行と縮退で自力回復する。
+          # 直らなかった事実はこのジョブの失敗＝赤いバッジとGitHubからのメールに残る）
+          NOTIFY_ON_ERROR: "false"
